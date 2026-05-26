@@ -88,9 +88,9 @@ async function openCartPage(page) {
   await closeCellphoneSPopups(page);
   await closeImagePreviewIfOpen(page);
 
-  await page.getByText('Giỏ hàng').click();
+  await page.getByText(/^Giỏ hàng/).first().click();
 
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForLoadState('domcontentloaded').catch(() => { });
   await page.waitForTimeout(3000);
 
   await closeCellphoneSPopups(page);
@@ -107,18 +107,47 @@ async function expectCartHasProduct(page) {
   });
 }
 
+async function getMainBuyNowButton(page) {
+  return page.getByRole('button', {
+    name: 'MUA NGAY Giao nhanh từ 2 giờ',
+  });
+}
+
+async function getMainAddToCartButton(page) {
+  return page.getByRole('button', {
+    name: 'Thêm vào giỏ',
+  }).first();
+}
+
+async function getFloatingBuyNowButton(page) {
+  return page.getByRole('button', {
+    name: 'Mua Ngay',
+    exact: true,
+  });
+}
+
+async function getFloatingAddToCartButton(page) {
+  return page.locator('.button-desktop.button-add-to-cart');
+}
+
+async function scrollToFloatingBuyBar(page) {
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(1500);
+  await closeImagePreviewIfOpen(page);
+}
+
 async function clickMainAddToCart(page) {
   await openProductDetail(page);
   await selectProductVersionAndColor(page);
 
   await closeImagePreviewIfOpen(page);
 
-  const addToCartButton = page.locator('.button-desktop.button-add-to-cart');
+  const mainAddToCartButton = await getMainAddToCartButton(page);
 
-  await expect(addToCartButton).toBeVisible({ timeout: 15000 });
+  await expect(mainAddToCartButton).toBeVisible({ timeout: 15000 });
 
-  await addToCartButton.scrollIntoViewIfNeeded();
-  await addToCartButton.click();
+  await mainAddToCartButton.scrollIntoViewIfNeeded();
+  await mainAddToCartButton.click();
 
   await page.waitForTimeout(3000);
 
@@ -132,19 +161,17 @@ async function clickMainBuyNow(page) {
 
   await closeImagePreviewIfOpen(page);
 
-  const buyNowButton = page.getByRole('button', { name: 'Mua Ngay', exact: true });
+  const mainBuyNowButton = await getMainBuyNowButton(page);
 
-  await expect(buyNowButton).toBeVisible({ timeout: 15000 });
+  await expect(mainBuyNowButton).toBeVisible({ timeout: 15000 });
 
-  await buyNowButton.scrollIntoViewIfNeeded();
-  await buyNowButton.click();
+  await mainBuyNowButton.scrollIntoViewIfNeeded();
+  await mainBuyNowButton.click();
 
   await page.waitForTimeout(3000);
 
   await closeCellphoneSPopups(page);
   await closeImagePreviewIfOpen(page);
-
-  await openCartPage(page);
 }
 
 async function clickFloatingAddToCart(page) {
@@ -152,11 +179,9 @@ async function clickFloatingAddToCart(page) {
   await selectProductVersionAndColor(page);
 
   await closeImagePreviewIfOpen(page);
+  await scrollToFloatingBuyBar(page);
 
-  await page.mouse.wheel(0, 900);
-  await page.waitForTimeout(1500);
-
-  const floatingAddToCartButton = page.locator('.button-desktop.button-add-to-cart').last();
+  const floatingAddToCartButton = await getFloatingAddToCartButton(page);
 
   await expect(floatingAddToCartButton).toBeVisible({ timeout: 15000 });
 
@@ -173,11 +198,9 @@ async function clickFloatingBuyNow(page) {
   await selectProductVersionAndColor(page);
 
   await closeImagePreviewIfOpen(page);
+  await scrollToFloatingBuyBar(page);
 
-  await page.mouse.wheel(0, 900);
-  await page.waitForTimeout(1500);
-
-  const floatingBuyButton = page.getByRole('button', { name: 'Mua Ngay', exact: true }).last();
+  const floatingBuyButton = await getFloatingBuyNowButton(page);
 
   await expect(floatingBuyButton).toBeVisible({ timeout: 15000 });
 
@@ -187,8 +210,30 @@ async function clickFloatingBuyNow(page) {
 
   await closeCellphoneSPopups(page);
   await closeImagePreviewIfOpen(page);
+}
 
+async function prepareProductInCartByMainBuyNow(page) {
+  await clickMainBuyNow(page);
   await openCartPage(page);
+  await expectCartHasProduct(page);
+}
+
+async function prepareProductInCartByMainAddToCart(page) {
+  await clickMainAddToCart(page);
+  await openCartPage(page);
+  await expectCartHasProduct(page);
+}
+
+async function prepareProductInCartByFloatingBuyNow(page) {
+  await clickFloatingBuyNow(page);
+  await openCartPage(page);
+  await expectCartHasProduct(page);
+}
+
+async function prepareProductInCartByFloatingAddToCart(page) {
+  await clickFloatingAddToCart(page);
+  await openCartPage(page);
+  await expectCartHasProduct(page);
 }
 
 async function clickPlusInCart(page) {
@@ -198,7 +243,6 @@ async function clickPlusInCart(page) {
 
   await page.getByText('+', { exact: true }).first().click();
   await page.waitForTimeout(1200);
-  await closeAlertPopupIfOpen(page);
 }
 
 async function clickMinusInCart(page) {
@@ -213,9 +257,11 @@ async function clickMinusInCart(page) {
 async function deleteProductInCart(page) {
   const cartItem = page.locator('#listItemSuperCart');
 
-  await expect(cartItem).toBeVisible({ timeout: 15000 });
+  if (!(await cartItem.isVisible({ timeout: 5000 }).catch(() => false))) {
+    return;
+  }
 
-  const deleteButton = cartItem.getByRole('button').first();
+  const deleteButton = cartItem.getByRole('button').nth(0);
 
   await deleteButton.click();
   await page.waitForTimeout(2000);
@@ -229,6 +275,42 @@ async function deleteProductInCart(page) {
 
   await closeCellphoneSPopups(page);
   await closeImagePreviewIfOpen(page);
+}
+
+async function getQuantityValue(page) {
+  const quantityInput = page.locator('#listItemSuperCart').getByRole('textbox');
+
+  if (await quantityInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+    const value = await quantityInput.inputValue();
+    return Number(value.replace(/[^\d]/g, ''));
+  }
+
+  return null;
+}
+
+async function increaseUntilLimitWarning(page, maxClicks = 30) {
+  const plusButton = page.getByText('+', { exact: true }).first();
+  const closeWarningButton = page.getByRole('button', { name: 'Close' });
+
+  let warningFound = false;
+
+  for (let i = 0; i < maxClicks; i++) {
+    await plusButton.click();
+    await page.waitForTimeout(500);
+
+    const isWarningVisible = await closeWarningButton
+      .isVisible({ timeout: 500 })
+      .catch(() => false);
+
+    if (isWarningVisible) {
+      warningFound = true;
+      break;
+    }
+  }
+
+  expect(warningFound).toBeTruthy();
+
+  await closeAlertPopupIfOpen(page);
 }
 
 test.describe('TC05 - Chức năng thêm/xóa sản phẩm trong giỏ hàng trên CellphoneS', () => {
@@ -273,9 +355,9 @@ test.describe('TC05 - Chức năng thêm/xóa sản phẩm trong giỏ hàng tr�
     await openProductDetail(page);
     await selectProductVersionAndColor(page);
 
-    const buyNowButton = page.getByRole('button', { name: 'Mua Ngay', exact: true });
+    const mainBuyNowButton = await getMainBuyNowButton(page);
 
-    await expect(buyNowButton).toBeVisible({
+    await expect(mainBuyNowButton).toBeVisible({
       timeout: 15000,
     });
 
@@ -286,109 +368,146 @@ test.describe('TC05 - Chức năng thêm/xóa sản phẩm trong giỏ hàng tr�
     await openProductDetail(page);
     await selectProductVersionAndColor(page);
 
-    const addToCartButton = page.locator('.button-desktop.button-add-to-cart');
+    const mainAddToCartButton = await getMainAddToCartButton(page);
 
-    await expect(addToCartButton).toBeVisible({
+    await expect(mainAddToCartButton).toBeVisible({
       timeout: 15000,
     });
 
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC05.6 - Bấm Thêm vào giỏ ở khu vực chính và kiểm tra sản phẩm được thêm', async ({ page }) => {
-    await clickMainAddToCart(page);
+  test('TC05.6 - Kiểm tra nút Mua Ngay ở thanh mua hàng nổi hiển thị', async ({ page }) => {
+    await openProductDetail(page);
+    await selectProductVersionAndColor(page);
 
-    await expect(page.locator('body')).toContainText(/giỏ hàng|thêm|sản phẩm|OPPO|X9/i, {
+    await scrollToFloatingBuyBar(page);
+
+    const floatingBuyNowButton = await getFloatingBuyNowButton(page);
+
+    await expect(floatingBuyNowButton).toBeVisible({
       timeout: 15000,
     });
 
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC05.7 - Bấm Mua Ngay ở khu vực chính và chuyển sang trang giỏ hàng', async ({ page }) => {
-    await clickMainBuyNow(page);
+  test('TC05.7 - Kiểm tra nút Thêm vào giỏ ở thanh mua hàng nổi hiển thị', async ({ page }) => {
+    await openProductDetail(page);
+    await selectProductVersionAndColor(page);
 
-    await expectCartHasProduct(page);
-    await expectWebsiteStillWorks(page);
-  });
+    await scrollToFloatingBuyBar(page);
 
-  test('TC05.8 - Kiểm tra sản phẩm hiển thị trong giỏ hàng sau khi Mua Ngay', async ({ page }) => {
-    await clickMainBuyNow(page);
+    const floatingAddToCartButton = await getFloatingAddToCartButton(page);
 
-    await expectCartHasProduct(page);
-    await expectWebsiteStillWorks(page);
-  });
-
-  test('TC05.9 - Bấm Thêm vào giỏ ở thanh mua hàng nổi', async ({ page }) => {
-    await clickFloatingAddToCart(page);
-
-    await expect(page.locator('body')).toContainText(/giỏ hàng|thêm|sản phẩm|OPPO|X9/i, {
+    await expect(floatingAddToCartButton).toBeVisible({
       timeout: 15000,
     });
 
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC05.10 - Bấm Mua Ngay ở thanh mua hàng nổi và chuyển sang giỏ hàng', async ({ page }) => {
-    await clickFloatingBuyNow(page);
+  test('TC05.8 - Bấm Thêm vào giỏ ở khu vực chính, kiểm tra giỏ hàng có sản phẩm và xóa sau kiểm tra', async ({ page }) => {
+    await prepareProductInCartByMainAddToCart(page);
 
     await expectCartHasProduct(page);
+
+    await deleteProductInCart(page);
+
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC05.11 - Kiểm tra sản phẩm hiển thị trong giỏ sau khi mua từ thanh nổi', async ({ page }) => {
-    await clickFloatingBuyNow(page);
+  test('TC05.9 - Bấm Mua Ngay ở khu vực chính, kiểm tra giỏ hàng có sản phẩm và xóa sau kiểm tra', async ({ page }) => {
+    await prepareProductInCartByMainBuyNow(page);
 
     await expectCartHasProduct(page);
+
+    await deleteProductInCart(page);
+
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC05.12 - Tăng số lượng sản phẩm trong giỏ hàng', async ({ page }) => {
-    await clickMainBuyNow(page);
+  test('TC05.10 - Bấm Thêm vào giỏ ở thanh mua hàng nổi, kiểm tra giỏ hàng có sản phẩm và xóa sau kiểm tra', async ({ page }) => {
+    await prepareProductInCartByFloatingAddToCart(page);
 
     await expectCartHasProduct(page);
+
+    await deleteProductInCart(page);
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC05.11 - Bấm Mua Ngay ở thanh mua hàng nổi, kiểm tra giỏ hàng có sản phẩm và xóa sau kiểm tra', async ({ page }) => {
+    await prepareProductInCartByFloatingBuyNow(page);
+
+    await expectCartHasProduct(page);
+
+    await deleteProductInCart(page);
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC05.12 - Mở giỏ hàng và kiểm tra giỏ hàng hoạt động', async ({ page }) => {
+    await openMobilePage(page);
+
+    await openCartPage(page);
+
+    await expect(page.locator('body')).toContainText(/Giỏ hàng|Thanh toán|Tạm tính|sản phẩm/i, {
+      timeout: 15000,
+    });
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC05.13 - Tăng số lượng sản phẩm trong giỏ hàng', async ({ page }) => {
+    await prepareProductInCartByMainBuyNow(page);
 
     await clickPlusInCart(page);
 
     await expectCartHasProduct(page);
+
+    await deleteProductInCart(page);
+
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC05.13 - Giảm số lượng sản phẩm trong giỏ hàng', async ({ page }) => {
-    await clickMainBuyNow(page);
-
-    await expectCartHasProduct(page);
+  test('TC05.14 - Giảm số lượng sản phẩm trong giỏ hàng', async ({ page }) => {
+    await prepareProductInCartByMainBuyNow(page);
 
     await clickPlusInCart(page);
     await clickMinusInCart(page);
 
     await expectCartHasProduct(page);
-    await expectWebsiteStillWorks(page);
-  });
 
-  test('TC05.14 - Tăng quá số lượng cho phép và kiểm tra hệ thống hiển thị thông báo', async ({ page }) => {
-    await clickMainBuyNow(page);
-
-    await expectCartHasProduct(page);
-
-    await clickPlusInCart(page);
-    await clickPlusInCart(page);
-    await clickPlusInCart(page);
-    await clickPlusInCart(page);
-
-    await expect(page.locator('body')).toContainText(/số lượng|không đủ|tối đa|sản phẩm|giỏ hàng/i, {
-      timeout: 15000,
-    });
-
-    await closeAlertPopupIfOpen(page);
+    await deleteProductInCart(page);
 
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC05.15 - Kiểm tra có thể nhập trực tiếp số lượng sản phẩm trong giỏ hàng', async ({ page }) => {
-    await clickMainBuyNow(page);
+  test('TC05.15 - Tăng quá số lượng cho phép và kiểm tra hệ thống hiển thị thông báo', async ({ page }) => {
+    test.setTimeout(180000);
+
+    await prepareProductInCartByMainBuyNow(page);
+
+    await increaseUntilLimitWarning(page, 30);
+
+    await expectWebsiteStillWorks(page);
+
+    await deleteProductInCart(page);
+  });
+
+  test('TC05.16 - Xóa sản phẩm khỏi giỏ hàng', async ({ page }) => {
+    await prepareProductInCartByMainBuyNow(page);
 
     await expectCartHasProduct(page);
+
+    await deleteProductInCart(page);
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC05.17 - Kiểm tra có thể nhập trực tiếp số lượng sản phẩm trong giỏ hàng', async ({ page }) => {
+    await prepareProductInCartByMainBuyNow(page);
 
     const quantityInput = page.locator('#listItemSuperCart').getByRole('textbox');
 
@@ -400,15 +519,7 @@ test.describe('TC05 - Chức năng thêm/xóa sản phẩm trong giỏ hàng tr�
     await expect(quantityInput).toHaveValue('3', {
       timeout: 5000,
     });
-  });
-
-  test('TC05.16 - Xóa sản phẩm khỏi giỏ hàng', async ({ page }) => {
-    await clickMainBuyNow(page);
-
-    await expectCartHasProduct(page);
 
     await deleteProductInCart(page);
-
-    await expectWebsiteStillWorks(page);
   });
 });
