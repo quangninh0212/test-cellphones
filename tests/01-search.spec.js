@@ -176,4 +176,91 @@ test.describe('TC01 - Chức năng tìm kiếm sản phẩm trên CellphoneS', (
 
     await expectWebsiteStillWorks(page);
   });
+
+    test('TC01.13 - Tìm kiếm tiếng Việt có dấu', async ({ page }) => {
+    await openHomePage(page);
+
+    await searchProduct(page, 'điện thoại');
+
+    await expect(page.locator('body')).toContainText(/điện thoại|sản phẩm|Samsung|iPhone|OPPO/i, {
+      timeout: 15000,
+    });
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC01.14 - Tìm kiếm với chuỗi XSS cơ bản', async ({ page }) => {
+    await openHomePage(page);
+
+    await searchProduct(page, '<script>alert(1)</script>');
+
+    await expectWebsiteStillWorks(page);
+
+    const bodyText = await page.locator('body').innerText();
+
+    expect(bodyText).not.toContain('alert(1)');
+  });
+
+  test('TC01.15 - Kiểm tra autocomplete khi nhập keyword sam', async ({ page }) => {
+    await openHomePage(page);
+
+    const searchBox = getSearchBox(page);
+
+    await expect(searchBox).toBeVisible({ timeout: 15000 });
+
+    await searchBox.click();
+    await searchBox.fill('sam');
+
+    await page.waitForTimeout(2000);
+
+    await expect(page.locator('body')).toContainText(/Samsung|sam/i, {
+      timeout: 15000,
+    });
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC01.16 - Click vào gợi ý tìm kiếm tự động', async ({ page }) => {
+    await openHomePage(page);
+
+    const searchBox = getSearchBox(page);
+
+    await expect(searchBox).toBeVisible({ timeout: 15000 });
+
+    await searchBox.click();
+    await searchBox.fill('sam');
+
+    await page.waitForTimeout(2000);
+
+    const suggestion = page.getByText(/Samsung/i).first();
+
+    if (await suggestion.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await suggestion.click();
+      await page.waitForTimeout(3000);
+
+      await expect(page.locator('body')).toContainText(/Samsung|sản phẩm|đ/i, {
+        timeout: 15000,
+      });
+    } else {
+      await searchBox.press('Enter');
+
+      await expect(page.locator('body')).toContainText(/Samsung|sam|sản phẩm|đ/i, {
+        timeout: 15000,
+      });
+    }
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC01.17 - Kiểm tra thông báo khi tìm kiếm không có kết quả', async ({ page }) => {
+    await openHomePage(page);
+
+    await searchProduct(page, 'abcxyz999888khongcoketqua');
+
+    await expect(page.locator('body')).toContainText(/không tìm thấy|không có|không tồn tại|sản phẩm|kết quả/i, {
+      timeout: 15000,
+    });
+
+    await expectWebsiteStillWorks(page);
+  });
 });

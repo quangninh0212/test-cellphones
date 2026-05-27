@@ -4,7 +4,7 @@ const { closeCellphoneSPopups } = require('../utils/helpers');
 const CATEGORY_URL = 'https://cellphones.com.vn/mobile.html';
 const PRICE_SELECTOR = '.product__price--show';
 
-test.setTimeout(60000);
+test.setTimeout(90000);
 
 async function openMobilePage(page) {
   const response = await page.goto(CATEGORY_URL, {
@@ -40,24 +40,24 @@ async function getProductPrices(page) {
     .filter(price => price > 0);
 }
 
-function isAscending(numbers) {
-  for (let i = 0; i < numbers.length - 1; i++) {
-    if (numbers[i] > numbers[i + 1]) {
-      return false;
-    }
-  }
-
-  return true;
+function expectPricesExist(prices) {
+  expect(prices.length).toBeGreaterThan(1);
 }
 
-function isDescending(numbers) {
-  for (let i = 0; i < numbers.length - 1; i++) {
-    if (numbers[i] < numbers[i + 1]) {
-      return false;
-    }
-  }
+function expectPricesAscending(prices) {
+  expectPricesExist(prices);
 
-  return true;
+  for (let i = 0; i < prices.length - 1; i++) {
+    expect(prices[i]).toBeLessThanOrEqual(prices[i + 1]);
+  }
+}
+
+function expectPricesDescending(prices) {
+  expectPricesExist(prices);
+
+  for (let i = 0; i < prices.length - 1; i++) {
+    expect(prices[i]).toBeGreaterThanOrEqual(prices[i + 1]);
+  }
 }
 
 async function sortLowToHigh(page) {
@@ -72,10 +72,63 @@ async function sortHighToLow(page) {
   await closeCellphoneSPopups(page);
 }
 
-async function filterByApple(page) {
-  await page.getByRole('link', { name: 'Điện thoại Apple' }).first().click();
+async function sortHotPromotion(page) {
+  await page.getByText('Khuyến mãi HOT').click();
+  await page.waitForTimeout(2500);
+  await closeCellphoneSPopups(page);
+}
+
+async function sortPopular(page) {
+  await page.locator('a').filter({ hasText: 'Phổ biến' }).first().click();
+  await page.waitForTimeout(2500);
+  await closeCellphoneSPopups(page);
+}
+
+async function openPhoneTypeFilter(page) {
+  await page.getByRole('button', { name: 'Loại điện thoại' }).click();
+  await page.waitForTimeout(1000);
+}
+
+async function filterByPhoneType(page, phoneTypeName) {
+  await openPhoneTypeFilter(page);
+
+  await page
+    .locator('#filterModule')
+    .getByRole('button', { name: phoneTypeName })
+    .click();
+
+  await page
+    .locator('#filterModule')
+    .getByRole('button', { name: 'Xem kết quả' })
+    .click();
+
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2500);
+
+  await closeCellphoneSPopups(page);
+}
+
+async function filterByIOS(page) {
+  await filterByPhoneType(page, 'iPhone (iOS)');
+}
+
+async function clickViewMoreProducts(page) {
+  const viewMoreButton = page
+    .locator(
+      'xpath=//*[contains(normalize-space(.), "Xem thêm") and contains(normalize-space(.), "sản phẩm") and not(contains(normalize-space(.), "bình luận")) and not(.//*[contains(normalize-space(.), "Xem thêm") and contains(normalize-space(.), "sản phẩm")])]'
+    )
+    .first();
+
+  await expect(viewMoreButton).toBeVisible({
+    timeout: 15000,
+  });
+
+  await viewMoreButton.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(800);
+
+  await viewMoreButton.click({ force: true });
+
+  await page.waitForTimeout(4000);
   await closeCellphoneSPopups(page);
 }
 
@@ -105,9 +158,10 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
 
     await sortLowToHigh(page);
 
-    await expect(page.locator('body')).toContainText(/Giá Thấp - Cao|đ/i, {
-      timeout: 15000,
-    });
+    const prices = await getProductPrices(page);
+    const checkedPrices = prices.slice(0, 8);
+
+    expectPricesAscending(checkedPrices);
 
     await expectWebsiteStillWorks(page);
   });
@@ -118,10 +172,9 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
     await sortLowToHigh(page);
 
     const prices = await getProductPrices(page);
-    const firstPrices = prices.slice(0, 8);
+    const checkedPrices = prices.slice(0, 12);
 
-    expect(firstPrices.length).toBeGreaterThan(1);
-    expect(isAscending(firstPrices)).toBeTruthy();
+    expectPricesAscending(checkedPrices);
 
     await expectWebsiteStillWorks(page);
   });
@@ -131,9 +184,10 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
 
     await sortHighToLow(page);
 
-    await expect(page.locator('body')).toContainText(/Giá Cao - Thấp|đ/i, {
-      timeout: 15000,
-    });
+    const prices = await getProductPrices(page);
+    const checkedPrices = prices.slice(0, 8);
+
+    expectPricesDescending(checkedPrices);
 
     await expectWebsiteStillWorks(page);
   });
@@ -144,10 +198,9 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
     await sortHighToLow(page);
 
     const prices = await getProductPrices(page);
-    const firstPrices = prices.slice(0, 8);
+    const checkedPrices = prices.slice(0, 12);
 
-    expect(firstPrices.length).toBeGreaterThan(1);
-    expect(isDescending(firstPrices)).toBeTruthy();
+    expectPricesDescending(checkedPrices);
 
     await expectWebsiteStillWorks(page);
   });
@@ -156,21 +209,26 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
     await openMobilePage(page);
 
     await sortLowToHigh(page);
+
+    const lowToHighPrices = await getProductPrices(page);
+    const checkedLowToHighPrices = lowToHighPrices.slice(0, 8);
+
+    expectPricesAscending(checkedLowToHighPrices);
+
     await sortHighToLow(page);
 
-    const prices = await getProductPrices(page);
-    const firstPrices = prices.slice(0, 8);
+    const highToLowPrices = await getProductPrices(page);
+    const checkedHighToLowPrices = highToLowPrices.slice(0, 8);
 
-    expect(firstPrices.length).toBeGreaterThan(1);
-    expect(isDescending(firstPrices)).toBeTruthy();
+    expectPricesDescending(checkedHighToLowPrices);
 
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC03.8 - Sắp xếp giá thấp đến cao sau khi lọc hãng Apple', async ({ page }) => {
+  test('TC03.8 - Sắp xếp giá thấp đến cao sau khi lọc loại điện thoại iPhone iOS', async ({ page }) => {
     await openMobilePage(page);
 
-    await filterByApple(page);
+    await filterByIOS(page);
     await sortLowToHigh(page);
 
     await expect(page.locator('body')).toContainText(/Apple|iPhone|đ/i, {
@@ -178,18 +236,17 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
     });
 
     const prices = await getProductPrices(page);
-    const firstPrices = prices.slice(0, 8);
+    const checkedPrices = prices.slice(0, 8);
 
-    expect(firstPrices.length).toBeGreaterThan(1);
-    expect(isAscending(firstPrices)).toBeTruthy();
+    expectPricesAscending(checkedPrices);
 
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC03.9 - Sắp xếp giá cao đến thấp sau khi lọc hãng Apple', async ({ page }) => {
+  test('TC03.9 - Sắp xếp giá cao đến thấp sau khi lọc loại điện thoại iPhone iOS', async ({ page }) => {
     await openMobilePage(page);
 
-    await filterByApple(page);
+    await filterByIOS(page);
     await sortHighToLow(page);
 
     await expect(page.locator('body')).toContainText(/Apple|iPhone|đ/i, {
@@ -197,10 +254,9 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
     });
 
     const prices = await getProductPrices(page);
-    const firstPrices = prices.slice(0, 8);
+    const checkedPrices = prices.slice(0, 8);
 
-    expect(firstPrices.length).toBeGreaterThan(1);
-    expect(isDescending(firstPrices)).toBeTruthy();
+    expectPricesDescending(checkedPrices);
 
     await expectWebsiteStillWorks(page);
   });
@@ -221,28 +277,93 @@ test.describe('TC03 - Chức năng sắp xếp sản phẩm theo giá trên Cell
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC03.11 - Chọn sắp xếp Khuyến mãi HOT', async ({ page }) => {
+  test('TC03.11 - Chọn sắp xếp Khuyến mãi HOT và kiểm tra danh sách sản phẩm vẫn hiển thị', async ({ page }) => {
     await openMobilePage(page);
 
-    await page.getByText('Khuyến mãi HOT').click();
-    await page.waitForTimeout(2500);
+    await sortHotPromotion(page);
 
     await expect(page.locator('body')).toContainText(/Khuyến mãi HOT|đ|sản phẩm/i, {
       timeout: 15000,
     });
 
+    const prices = await getProductPrices(page);
+
+    expect(prices.length).toBeGreaterThan(0);
+
     await expectWebsiteStillWorks(page);
   });
 
-  test('TC03.12 - Chọn sắp xếp Phổ biến', async ({ page }) => {
+  test('TC03.12 - Chọn sắp xếp Phổ biến và kiểm tra danh sách sản phẩm vẫn hiển thị', async ({ page }) => {
     await openMobilePage(page);
 
-    await page.locator('a').filter({ hasText: 'Phổ biến' }).first().click();
-    await page.waitForTimeout(2500);
+    await sortPopular(page);
 
     await expect(page.locator('body')).toContainText(/Phổ biến|đ|sản phẩm/i, {
       timeout: 15000,
     });
+
+    const prices = await getProductPrices(page);
+
+    expect(prices.length).toBeGreaterThan(0);
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC03.13 - Giữ sắp xếp giá cao đến thấp sau khi bấm Xem thêm sản phẩm', async ({ page }) => {
+    await openMobilePage(page);
+
+    await sortHighToLow(page);
+
+    const pricesBeforeViewMore = await getProductPrices(page);
+    const checkedPricesBefore = pricesBeforeViewMore.slice(0, 8);
+
+    expectPricesDescending(checkedPricesBefore);
+
+    await clickViewMoreProducts(page);
+
+    const pricesAfterViewMore = await getProductPrices(page);
+    const checkedPricesAfter = pricesAfterViewMore.slice(0, 16);
+
+    expectPricesDescending(checkedPricesAfter);
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC03.14 - Giữ sắp xếp giá thấp đến cao sau khi bấm Xem thêm sản phẩm', async ({ page }) => {
+    await openMobilePage(page);
+
+    await sortLowToHigh(page);
+
+    const pricesBeforeViewMore = await getProductPrices(page);
+    const checkedPricesBefore = pricesBeforeViewMore.slice(0, 8);
+
+    expectPricesAscending(checkedPricesBefore);
+
+    await clickViewMoreProducts(page);
+
+    const pricesAfterViewMore = await getProductPrices(page);
+    const checkedPricesAfter = pricesAfterViewMore.slice(0, 16);
+
+    expectPricesAscending(checkedPricesAfter);
+
+    await expectWebsiteStillWorks(page);
+  });
+
+  test('TC03.15 - Bấm Xem thêm nhiều lần sau khi sắp xếp giá cao đến thấp vẫn giữ thứ tự giá', async ({ page }) => {
+    test.setTimeout(120000);
+
+    await openMobilePage(page);
+
+    await sortHighToLow(page);
+
+    await clickViewMoreProducts(page);
+    await clickViewMoreProducts(page);
+    await clickViewMoreProducts(page);
+
+    const prices = await getProductPrices(page);
+    const checkedPrices = prices.slice(0, 24);
+
+    expectPricesDescending(checkedPrices);
 
     await expectWebsiteStillWorks(page);
   });
